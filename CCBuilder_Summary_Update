@@ -1,0 +1,49 @@
+USE [Ecomm_test]
+GO
+/****** Object:  StoredProcedure [dbo].[CCBuilder_Summary_Update]    Script Date: 18/08/2021 12:06:05 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		Eva
+-- Create date: 2021-07
+-- Description:	Update CCBuilder_Summary table to integrate new ccbuilder data from manually improted files
+-- =============================================
+ALTER PROCEDURE [dbo].[CCBuilder_Summary_Update] AS
+
+BEGIN
+
+SELECT 
+t.Id AS TransactionId,
+COALESCE(t.lead_click_id, e.Id) AS ClickId,
+t.order_id AS OrderId,
+t.MID AS MID,
+t.Transaction_Date AS TransactionDate,
+CASE WHEN t.Type = 'CAPTURE' THEN COALESCE(t.Parent_transaction_date,e.ConversionUpdatedAt) ELSE COALESCE(e.ConversionUpdatedAt, t.Transaction_Date) END AS ConversionDate, 
+--COALESCE(e.ConversionUpdatedAt, t.Transaction_Date) AS ConversionDate,
+t.Transaction_amount_in_original_currency AS TransactionAmount,
+CASE WHEN t.Type = 'AUTH' THEN 1 ELSE 0 END AS IsAuthTransaction, 
+CASE WHEN t.Type = 'CAPTURE' THEN 1 ELSE 0 END AS IsCaptureTransaction, 
+CASE WHEN T.Type = 'VOID' THEN 1 ELSE 0 END AS IsVoidTransaction, 
+CASE WHEN T.Type = 'REFUND' THEN 1 ELSE 0 END AS IsRefundTransaction, 
+CASE WHEN T.Type = 'CHARGEBACK' THEN 1 ELSE 0 END AS IsChargebackTransaction, 
+CASE WHEN t.lead_click_id IS NOT NULL AND e.Id IS NOT null THEN 1 ELSE 0 END AS IsMatchedTransaction,
+CASE WHEN t.lead_click_id IS NOT NULL AND e.Id IS null THEN 1 ELSE 0 END AS TransactionWithoutClick,
+CASE WHEN t.lead_click_id IS NULL AND e.Id IS NOT NULL THEN 1 ELSE 0 END AS ClickWithoutTransaction,
+CASE WHEN t.lead_click_id IS NULL AND e.Id IS NULL THEN 1 ELSE 0 END AS UnsuccessTransaction,
+t.Status As TransactionStatus,
+t.Country AS Country
+INTO #Summary
+FROM dbo.[CC_Build_temp] (nolock) t
+FULL OUTER	JOIN BI_Tracking.dbo.ecommercetracking (nolock) e ON e.Id = t.lead_click_id
+
+ TRUNCATE TABLE dbo.CCBuilder_Summary
+
+ INSERT INTO CCBuilder_Summary
+ SELECT *
+ FROM #Summary
+
+ DROP TABLE #Summary
+
+ END; 
